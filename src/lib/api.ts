@@ -27,7 +27,6 @@ export interface SiteLog {
 }
 
 export const api = {
-  // Authentication
   login: async (username: string, password: string): Promise<AuthResponse> => {
     const formData = new URLSearchParams()
     formData.append("username", username)
@@ -41,41 +40,25 @@ export const api = {
       body: formData.toString(),
     })
 
-    if (!response.ok) {
-      throw new Error("Login failed")
-    }
-
+    if (!response.ok) throw new Error("Login failed")
     return response.json()
   },
 
   register: async (email: string, password: string): Promise<AuthResponse> => {
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     })
-
-    if (!response.ok) {
-      throw new Error("Registration failed")
-    }
-
+    if (!response.ok) throw new Error("Registration failed")
     return response.json()
   },
 
-  // Sites
   getSites: async (token: string): Promise<Site[]> => {
     const response = await fetch(`${API_BASE_URL}/sites/`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     })
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch sites")
-    }
-
+    if (!response.ok) throw new Error("Failed to fetch sites")
     return response.json()
   },
 
@@ -88,26 +71,32 @@ export const api = {
       },
       body: JSON.stringify({ url }),
     })
-
-    if (!response.ok) {
-      throw new Error("Failed to add site")
-    }
-
+    if (!response.ok) throw new Error("Failed to add site")
     return response.json()
   },
 
-  // Site Logs/History
   getSiteHistory: async (token: string, siteId: string): Promise<SiteLog[]> => {
     const response = await fetch(`${API_BASE_URL}/sites/${siteId}/history`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     })
+    if (!response.ok) throw new Error("Failed to fetch site history")
+    return response.json()
+  },
 
-    if (!response.ok) {
-      throw new Error("Failed to fetch site history")
-    }
+  // ✅ Cambiado a string para UUID
+  deleteSite: async (token: string, id: string) => {
+    const response = await fetch(`${API_BASE_URL}/sites/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!response.ok) throw new Error("Error deleting site")
+  },
 
+  getIncidentHistory: async (token: string): Promise<any[]> => {
+    const response = await fetch(`${API_BASE_URL}/sites/logs/incidents`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!response.ok) throw new Error("Failed to fetch incidents history")
     return response.json()
   },
 }

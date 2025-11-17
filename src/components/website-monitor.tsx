@@ -1,82 +1,61 @@
 "use client"
 
-import { useState, useEffect, type HTMLAttributes } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogPortal, DialogOverlay, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { SiteHealthChart } from "@/components/SiteHealthChart"
 import { api, type Site } from "@/lib/api"
 import { getToken, removeToken } from "@/lib/auth"
-import { SiteChart } from "./site-chart"
 
-const Globe = (props: HTMLAttributes<HTMLSpanElement>) => (
-  <span {...props} className={`text-lg ${props.className ?? ""}`}>
-    🌐
-  </span>
-)
-const Plus = (props: HTMLAttributes<HTMLSpanElement>) => (
-  <span {...props} className={`text-lg ${props.className ?? ""}`}>
-    ➕
-  </span>
-)
-const Activity = (props: HTMLAttributes<HTMLSpanElement>) => (
-  <span {...props} className={`text-lg ${props.className ?? ""}`}>
-    📊
-  </span>
-)
-const AlertTriangle = (props: HTMLAttributes<HTMLSpanElement>) => (
-  <span {...props} className={`text-lg ${props.className ?? ""}`}>
-    ⚠️
-  </span>
-)
-const CheckCircle = (props: HTMLAttributes<HTMLSpanElement>) => (
-  <span {...props} className={`text-lg ${props.className ?? ""}`}>
-    ✅
-  </span>
-)
-const XCircle = (props: HTMLAttributes<HTMLSpanElement>) => (
-  <span {...props} className={`text-lg ${props.className ?? ""}`}>
-    ❌
-  </span>
-)
-const Zap = (props: HTMLAttributes<HTMLSpanElement>) => (
-  <span {...props} className={`text-lg ${props.className ?? ""}`}>
-    ⚡
-  </span>
-)
-const Eye = (props: HTMLAttributes<HTMLSpanElement>) => (
-  <span {...props} className={`text-lg ${props.className ?? ""}`}>
-    👁️
-  </span>
-)
-const LogOut = (props: HTMLAttributes<HTMLSpanElement>) => (
-  <span {...props} className={`text-lg ${props.className ?? ""}`}>
-    🚪
-  </span>
-)
+import {
+  GlobeIcon,
+  PlusIcon,
+  ActivityLogIcon,
+  ExclamationTriangleIcon,
+  CheckCircledIcon,
+  CrossCircledIcon,
+  LightningBoltIcon,
+  EyeOpenIcon,
+  ExitIcon,
+} from "@radix-ui/react-icons"
+
+import { SiteChart } from "./site-chart"
 
 export function WebsiteMonitor() {
   const router = useRouter()
+
   const [sites, setSites] = useState<Site[]>([])
   const [newUrl, setNewUrl] = useState("")
   const [isScanning, setIsScanning] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
 
+  const [incidentLogs, setIncidentLogs] = useState<any[]>([])
+  const [openGroups, setOpenGroups] = useState<{ [key: string]: boolean }>({})
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [siteToDelete, setSiteToDelete] = useState<Site | null>(null)
+
+  const toggleGroup = (id: string) => {
+    setOpenGroups(prev => ({ ...prev, [id]: !prev[id] }))
+  }
+
   useEffect(() => {
     loadSites()
+    loadIncidents()
   }, [])
 
   const loadSites = async () => {
     try {
       const token = getToken()
-      if (!token) {
-        router.push("/login")
-        return
-      }
-
+      if (!token) return router.push("/login")
       const data = await api.getSites(token)
       setSites(data)
       setError("")
@@ -88,6 +67,17 @@ export function WebsiteMonitor() {
     }
   }
 
+  const loadIncidents = async () => {
+    try {
+      const token = getToken()
+      if (!token) return
+      const incidents = await api.getIncidentHistory(token)
+      setIncidentLogs(incidents)
+    } catch (err) {
+      console.log("Error cargando incidentes", err)
+    }
+  }
+
   const handleAddSite = async () => {
     if (!newUrl || !newUrl.startsWith("http")) {
       setError("Por favor ingresa una URL válida")
@@ -96,16 +86,11 @@ export function WebsiteMonitor() {
 
     setIsScanning(true)
     setError("")
-
     try {
       const token = getToken()
-      if (!token) {
-        router.push("/login")
-        return
-      }
-
+      if (!token) return router.push("/login")
       const newSite = await api.addSite(token, newUrl)
-      setSites((prev) => [...prev, newSite])
+      setSites(prev => [...prev, newSite])
       setNewUrl("")
     } catch (err) {
       setError("Error al agregar el sitio")
@@ -115,220 +100,205 @@ export function WebsiteMonitor() {
     }
   }
 
+  const handleDeleteSite = async () => {
+    if (!siteToDelete) return
+    try {
+      const token = getToken()
+      if (!token) return
+      await api.deleteSite(token, siteToDelete.id) // ✅ id es string UUID
+      setSites(prev => prev.filter(s => s.id !== siteToDelete.id))
+      setSiteToDelete(null)
+      setDeleteDialogOpen(false)
+    } catch (err) {
+      console.error("Error eliminando sitio", err)
+      setError("Error eliminando sitio")
+    }
+  }
+
   const handleLogout = () => {
     removeToken()
     router.push("/login")
   }
 
   const getStatusIcon = (status: string | null) => {
-    if (!status) return <Activity className="h-4 w-4 text-yellow-500" />
+    if (!status) return <ActivityLogIcon className="w-4 h-4 text-yellow-500" />
     switch (status) {
-      case "online":
-        return <CheckCircle className="h-4 w-4 text-emerald-500" />
-      case "offline":
-        return <XCircle className="h-4 w-4 text-red-500" />
-      default:
-        return <Activity className="h-4 w-4 text-yellow-500" />
+      case "online": return <CheckCircledIcon className="w-4 h-4 text-emerald-500" />
+      case "offline": return <CrossCircledIcon className="w-4 h-4 text-red-500" />
+      default: return <ActivityLogIcon className="w-4 h-4 text-yellow-500" />
     }
   }
 
   const getStatusBadge = (status: string | null) => {
-    if (!status) {
-      return (
-        <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
-          Verificando
-        </Badge>
-      )
-    }
-    const variants = {
-      online: "bg-emerald-100 text-emerald-800 border-emerald-200",
-      offline: "bg-red-100 text-red-800 border-red-200",
-    }
-
+    if (!status) return <Badge className="bg-gray-100 text-gray-700 border">Verificando</Badge>
     return (
-      <Badge variant="outline" className={variants[status as keyof typeof variants] || "bg-gray-100"}>
-        {status === "online" ? "En línea" : status === "offline" ? "Fuera de línea" : "Verificando"}
+      <Badge className={status === "online" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-red-100 text-red-700 border-red-200"}>
+        {status === "online" ? "En línea" : "Fuera de línea"}
       </Badge>
     )
   }
 
-  const onlineSites = sites.filter((site) => site.latest_log?.status === "online").length
-  const averageResponseTime =
-    sites.length > 0 ? sites.reduce((acc, site) => acc + (site.latest_log?.response_time || 0), 0) / sites.length : 0
+  const onlineSites = sites.filter(s => s.latest_log?.status === "online").length
+  const averageResponseTime = sites.length > 0 ? sites.reduce((acc, s) => acc + (s.latest_log?.response_time || 0), 0) / sites.length : 0
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Activity className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
-  }
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><ActivityLogIcon className="h-8 w-8 animate-spin text-primary" /></div>
+
+  const groupedIncidents = incidentLogs.reduce((acc, item) => {
+    const key = item.site_id
+    if (!acc[key]) acc[key] = { site_name: item.site_name, url: item.url, incidents: [] }
+    acc[key].incidents.push(item)
+    return acc
+  }, {} as any)
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen p-4 md:p-6 bg-background">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Globe />
-            </div>
+            <div className="p-2 rounded-lg bg-primary/10"><GlobeIcon className="w-6 h-6" /></div>
             <div>
               <h1 className="text-2xl font-bold">Monitor de Sitios Web</h1>
-              <p className="text-muted-foreground">
-                Monitorea el estado y rendimiento de tus sitios web en tiempo real
-              </p>
+              <p className="text-muted-foreground">Consulta el estado, rendimiento e incidencias</p>
             </div>
           </div>
-          <Button variant="outline" onClick={handleLogout} className="gap-2 bg-transparent">
-            <LogOut />
-            Cerrar sesión
-          </Button>
+          <Button variant="outline" onClick={handleLogout} className="gap-2"><ExitIcon />Cerrar sesión</Button>
         </div>
 
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Globe />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Sitios Monitoreados</p>
-                  <p className="text-2xl font-bold">{sites.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <Tabs defaultValue="general" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="sites">Sitios Monitoreados</TabsTrigger>
+            <TabsTrigger value="incidents">Historial de Incidencias</TabsTrigger>
+          </TabsList>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-100 rounded-lg">
-                  <CheckCircle />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">En Línea</p>
-                  <p className="text-2xl font-bold text-emerald-600">{onlineSites}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <Zap />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Tiempo Respuesta Prom.</p>
-                  <p className="text-2xl font-bold">{Math.round(averageResponseTime)}ms</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Add New Site */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plus />
-              Agregar Nuevo Sitio
-            </CardTitle>
-            <CardDescription>Ingresa la URL del sitio web que deseas monitorear</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {error && (
-              <Alert variant="destructive" className="mb-4">
-                <AlertTriangle />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            <div className="flex gap-3">
-              <Input
-                placeholder="https://ejemplo.com"
-                value={newUrl}
-                onChange={(e) => setNewUrl(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && handleAddSite()}
-                className="flex-1"
-              />
-              <Button onClick={handleAddSite} disabled={!newUrl || isScanning} className="min-w-[120px]">
-                {isScanning ? (
-                  <>
-                    <Activity className="h-4 w-4 mr-2 animate-spin" />
-                    Añadiendo...
-                  </>
-                ) : (
-                  <>
-                    <Eye />
-                    Añadir
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Sites Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sites.length === 0 ? (
-            <Card className="col-span-full">
-              <CardContent className="p-8 text-center">
-                <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                <p className="text-muted-foreground">No hay sitios registrados. ¡Agrega uno para empezar!</p>
-              </CardContent>
-            </Card>
-          ) : (
-            sites.map((site) => (
-              <Card key={site.id}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      {site.latest_log && getStatusIcon(site.latest_log.status)}
-                      <CardTitle className="text-lg break-all">{site.name}</CardTitle>
-                    </div>
+          {/* General */}
+          <TabsContent value="general" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardContent className="p-4 flex gap-3 items-center">
+                  <div className="p-2 bg-blue-100 rounded-lg"><GlobeIcon /></div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Sitios Monitoreados</p>
+                    <p className="text-2xl font-bold">{sites.length}</p>
                   </div>
-                  <CardDescription className="break-all text-xs">{site.url}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Estado:</span>
-                    {site.latest_log ? (
-                      getStatusBadge(site.latest_log.status)
-                    ) : (
-                      <Badge variant="outline" className="bg-gray-100">
-                        Sin datos
-                      </Badge>
-                    )}
-                  </div>
-
-                  {site.latest_log ? (
-                    <>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Tiempo de respuesta:</span>
-                        <span className="text-sm font-medium">{site.latest_log.response_time}ms</span>
-                      </div>
-
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Última verificación:</span>
-                        <span className="text-sm font-medium">
-                          {new Date(site.latest_log.timestamp).toLocaleTimeString()}
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-sm text-muted-foreground italic">Esperando primer escaneo...</div>
-                  )}
-
-                  <SiteChart siteId={site.id} siteName={site.name} />
                 </CardContent>
               </Card>
-            ))
-          )}
-        </div>
+              <Card>
+                <CardContent className="p-4 flex gap-3 items-center">
+                  <div className="p-2 bg-emerald-100 rounded-lg"><CheckCircledIcon /></div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">En Línea</p>
+                    <p className="text-2xl font-bold text-emerald-600">{onlineSites}</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4 flex gap-3 items-center">
+                  <div className="p-2 bg-orange-100 rounded-lg"><LightningBoltIcon /></div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Tiempo Promedio</p>
+                    <p className="text-2xl font-bold">{Math.round(averageResponseTime)}ms</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+             <div className="mt-6">
+    <SiteHealthChart sites={sites} />
+  </div>
+          </TabsContent>
+
+          {/* Sites */}
+          <TabsContent value="sites" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><PlusIcon />Agregar Nuevo Sitio</CardTitle>
+                <CardDescription>Ingresa la URL del sitio web que deseas monitorear</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {error && <Alert variant="destructive" className="mb-4"><ExclamationTriangleIcon /><AlertDescription>{error}</AlertDescription></Alert>}
+                <div className="flex gap-3">
+                  <Input placeholder="https://ejemplo.com" value={newUrl} onChange={e => setNewUrl(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddSite()} />
+                  <Button onClick={handleAddSite} disabled={isScanning}>
+                    {isScanning ? <><ActivityLogIcon className="animate-spin mr-2" />Añadiendo...</> : <><EyeOpenIcon className="mr-2" />Añadir</>}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {sites.map(site => (
+                <Card key={site.id}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(site.latest_log?.status || null)}
+                        <CardTitle className="text-lg break-all">{site.name}</CardTitle>
+                      </div>
+                      <Button variant="destructive" size="sm" onClick={() => { setSiteToDelete(site); setDeleteDialogOpen(true) }}>Eliminar</Button>
+                    </div>
+                    <CardDescription className="break-all text-xs">{site.url}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex justify-between items-center"><span className="text-sm text-muted-foreground">Estado</span>{getStatusBadge(site.latest_log?.status || null)}</div>
+                    {site.latest_log ? (
+                      <>
+                        <div className="flex justify-between"><span className="text-sm text-muted-foreground">Tiempo de respuesta:</span><span className="text-sm font-medium">{site.latest_log.response_time}ms</span></div>
+                        <div className="flex justify-between"><span className="text-sm text-muted-foreground">Última verificación:</span><span className="text-sm font-medium">{new Date(site.latest_log.timestamp).toLocaleTimeString()}</span></div>
+                      </>
+                    ) : (<p className="text-sm italic text-muted-foreground">Esperando primer escaneo...</p>)}
+                    <SiteChart siteId={site.id} siteName={site.name} />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+
+          {/* Incidents */}
+          <TabsContent value="incidents" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><ExclamationTriangleIcon />Incidencias registradas</CardTitle>
+                <CardDescription>Fallas detectadas (sitios fuera de línea)</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {incidentLogs.length === 0 && <p className="text-sm text-muted-foreground">No hay incidentes registrados.</p>}
+                {Object.values(groupedIncidents).map((group: any) => {
+                  const isOpen = openGroups[group.url] ?? true
+                  return (
+                    <div key={group.url} className="border p-4 rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <button onClick={() => toggleGroup(group.url)} className="flex items-center gap-2 font-bold">{isOpen ? "▼" : "▶"} {group.site_name}</button>
+                        <Badge className="bg-red-100 text-red-700 border-red-300">{group.incidents.length} incidentes</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground break-all">{group.url}</p>
+                      {isOpen && <div className="pl-3 mt-2 space-y-1 text-sm text-muted-foreground">{group.incidents.map((log: any) => (<div key={log.id}>• {new Date(log.timestamp).toLocaleString()}</div>))}</div>}
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Delete Dialog */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogPortal>
+            <DialogOverlay />
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Eliminar Sitio</DialogTitle>
+              </DialogHeader>
+              <DialogDescription>
+                ¿Seguro que deseas eliminar el sitio <strong>{siteToDelete?.name}</strong>? Esta acción no se puede deshacer.
+              </DialogDescription>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancelar</Button>
+                <Button variant="destructive" onClick={handleDeleteSite}>Eliminar</Button>
+              </DialogFooter>
+            </DialogContent>
+          </DialogPortal>
+        </Dialog>
       </div>
     </div>
   )
